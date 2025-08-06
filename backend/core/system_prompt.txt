@@ -50,8 +50,6 @@ Replicate the Structure: The structure of your generated script must mirror the 
 
 Mind the Pacing: Write in a way that can be naturally broken down into timed segments similar to the ones provided in the examples.
 
-Incorporate Visual Cues: Your generated script must include suggestions for on-screen actions, text, or graphics, as this is a key part of video creation. Enclose these suggestions in square brackets, like [Visual: Animation of Earth rotating].
-
 Be Original: Do NOT copy sentences or long phrases from the example scripts. The content must be entirely new and focused on the [NEW_TOPIC].
 
 ## Output Format

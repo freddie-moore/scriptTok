@@ -1,0 +1,14 @@
+pyproject.toml
+api/routes.py
+core/audio_transcriber.py
+core/gemini_client.py
+core/secret.py
+core/temp.py
+core/tiktok_audio_processor.py
+core/tiktok_downloader.py
+core/tiktok_profile_scraper.py
+core/workers.py
+tiktok_script_generator_backend.egg-info/PKG-INFO
+tiktok_script_generator_backend.egg-info/SOURCES.txt
+tiktok_script_generator_backend.egg-info/dependency_links.txt
+tiktok_script_generator_backend.egg-info/top_level.txt

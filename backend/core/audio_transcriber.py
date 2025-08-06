@@ -5,21 +5,96 @@
 Audio Transcriber Class
 
 This module contains the AudioTranscriber class responsible for 
-transcribing audio files using OpenAI Whisper.
+transcribing audio files using OpenAI Whisper with parallel processing support.
 """
 
 import os
 import logging
-from typing import Optional
+import multiprocessing as mp
+from typing import Optional, List, Dict
+from functools import partial
 
 import whisper
 
 # Import the custom exception from the downloader module
-from tiktok_downloader import TikTokTranscriberError
+from .tiktok_downloader import TikTokTranscriberError
+
+
+def transcribe_worker(args):
+    """
+    Worker function for parallel transcription.
+    This runs in a separate process to avoid model sharing issues.
+    """
+    audio_path, model_name, language, device, task, transcribe_options = args
+    
+    try:
+        # Load model in worker process
+        model = whisper.load_model(model_name, device=device)
+        
+        # Prepare transcription options
+        options = {
+            'language': language,
+            'task': task,
+            'verbose': False,
+            **transcribe_options
+        }
+        
+        # Remove None values
+        options = {k: v for k, v in options.items() if v is not None}
+        
+        # Transcribe
+        result = model.transcribe(audio_path, **options)
+        
+        return {
+            'audio_path': audio_path,
+            'result': result,
+            'status': 'success'
+        }
+        
+    except Exception as e:
+        return {
+            'audio_path': audio_path,
+            'result': None,
+            'status': 'error',
+            'error': str(e)
+        }
+
+
+def process_url_worker(args):
+    """
+    Worker function for parallel URL processing.
+    Downloads audio and prepares it for transcription.
+    """
+    url, output_dir, filename, downloader_class, downloader_kwargs, index = args
+    
+    try:
+        # Create downloader instance in worker process
+        downloader = downloader_class(**downloader_kwargs)
+        
+        # Download audio
+        audio_path = downloader.download_audio(
+            url, output_dir=output_dir, filename=filename
+        )
+        
+        return {
+            'index': index,
+            'url': url,
+            'audio_path': audio_path,
+            'status': 'success'
+        }
+        
+    except Exception as e:
+        return {
+            'index': index,
+            'url': url,
+            'audio_path': None,
+            'status': 'error',
+            'error': str(e)
+        }
 
 
 class AudioTranscriber:
-    """Class responsible for transcribing audio files using OpenAI Whisper."""
+    """Class responsible for transcribing audio files using OpenAI Whisper with parallel processing."""
     
     def __init__(self, model_name: str = "tiny", device: Optional[str] = None,
                  logger: Optional[logging.Logger] = None):
@@ -35,7 +110,7 @@ class AudioTranscriber:
         self.device = device
         self.logger = logger or self._setup_logger()
         
-        # Initialize Whisper model
+        # Initialize Whisper model for single file processing
         self.model = None
         self._load_model()
     
@@ -122,6 +197,40 @@ class AudioTranscriber:
             
         except Exception as e:
             raise TikTokTranscriberError(f"Failed to transcribe audio: {e}")
+    
+    def transcribe_multiple_files(self, audio_files: List[str], language: Optional[str] = None,
+                                  task: str = "transcribe", num_processes: Optional[int] = None,
+                                  **kwargs) -> List[Dict]:
+        """
+        Transcribe multiple audio files in parallel.
+        
+        Args:
+            audio_files: List of audio file paths
+            language: Language code for transcription
+            task: Task type ("transcribe" or "translate")
+            num_processes: Number of parallel processes (default: CPU count)
+            **kwargs: Additional arguments for transcription
+            
+        Returns:
+            List of transcription results
+        """
+        if num_processes is None:
+            num_processes = min(mp.cpu_count(), len(audio_files))
+        
+        self.logger.info(f"Starting parallel transcription of {len(audio_files)} files using {num_processes} processes")
+        
+        # Prepare arguments for worker processes
+        args = [
+            (audio_path, self.model_name, language, self.device, task, kwargs)
+            for audio_path in audio_files
+        ]
+        
+        # Process files in parallel
+        with mp.Pool(processes=num_processes) as pool:
+            results = pool.map(transcribe_worker, args)
+        
+        self.logger.info("Parallel transcription completed")
+        return results
     
     def transcribe_with_timestamps(self, audio_path: str, **kwargs) -> dict:
         """

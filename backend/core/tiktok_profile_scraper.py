@@ -13,7 +13,7 @@ from typing import Optional, List
 from urllib.parse import urlparse
 
 from apify_client import ApifyClient
-from tiktok_downloader import TikTokTranscriberError
+from .tiktok_downloader import TikTokTranscriberError
 
 class TikTokProfileScraper:
     """Uses Apify to scrape video URLs from a TikTok profile."""

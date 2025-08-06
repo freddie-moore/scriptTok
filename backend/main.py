@@ -12,15 +12,15 @@ import os
 import sys
 import logging
 import argparse
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
+import concurrent.futures
 
 # Import custom classes from other modules
-from tiktok_downloader import TikTokDownloader, TikTokTranscriberError
-from audio_transcriber import AudioTranscriber
-from tiktok_profile_scraper import TikTokProfileScraper
-from gemini_client import GeminiClient
-from secret import APIFY_API_KEY, GEMINI_API_KEY
-from temp import user_inp as msg
+from core.tiktok_downloader import TikTokDownloader, TikTokTranscriberError
+from core.audio_transcriber import AudioTranscriber
+from core.tiktok_profile_scraper import TikTokProfileScraper
+from core.gemini_client import GeminiClient
+from core.secret import APIFY_API_KEY, GEMINI_API_KEY
 
 
 class TikTokAudioProcessor:
@@ -137,6 +137,42 @@ def display_results(result: dict) -> None:
         print(f"\nAudio file saved: {result['audio_file']}")
     print("="*60)
 
+
+def process_video_worker(
+    url: str, 
+    model_name: str, 
+    output_dir: Optional[str], 
+    keep_audio: bool, 
+    language: Optional[str],
+    filename: Optional[str] = None
+) -> Dict:
+    """
+    Worker function to be executed by each process.
+    Initializes its own processor and handles one URL.
+    """
+    # Each worker process creates its own instance of the processor.
+    # This correctly handles model loading and other resources per-process.
+    processor = TikTokAudioProcessor(model_name=model_name)
+    
+    try:
+        result = processor.process_url(
+            url, 
+            output_dir, 
+            keep_audio, 
+            language,
+            filename=filename
+        )
+        # Include the original URL in the result for tracking
+        result['original_url'] = url
+        return result
+    except Exception as e:
+        # Return a dictionary with error information
+        return {
+            'original_url': url,
+            'error': str(e),
+            'transcription': None
+        }
+
 def main():
     """Main function to run the TikTok transcriber."""
     parser = argparse.ArgumentParser(
@@ -180,39 +216,79 @@ Examples:
 
 
     try:
-        urls_to_process = []
+        # urls_to_process = []
     
-        profile_name = args.profile_name if args.profile_name else get_profile_name_from_user()
-        keep_audio = args.keep_audio
-        language = args.language
+        # profile_name = args.profile_name if args.profile_name else get_profile_name_from_user()
+        # keep_audio = args.keep_audio
+        # language = args.language
 
-        scraper = TikTokProfileScraper(api_key=args.apify_token)
-        urls_to_process = scraper.scrape_profile_videos(profile_name, args.limit)
-        if not urls_to_process:
-            print("Could not find any videos to process. Exiting.")
-            sys.exit(0)
+        # scraper = TikTokProfileScraper(api_key=args.apify_token)
+        # urls_to_process = scraper.scrape_profile_videos(profile_name, args.limit)
+        # if not urls_to_process:
+        #     print("Could not find any videos to process. Exiting.")
+        #     sys.exit(0)
 
         if args.topic:
             new_topic_idea = args.topic
         else:
             new_topic_idea = get_topic_from_user()
 
-        print(f"\nFound {len(urls_to_process)} video(s) to process.")
+        # print(f"\nFound {len(urls_to_process)} video(s) to process.")
 
-        processor = TikTokAudioProcessor(model_name=args.model)
         past_scripts_data = []
+        urls_to_process = [
+            "https://www.tiktok.com/@3blue1brown/video/7499089278320921886",
+            "https://www.tiktok.com/@3blue1brown/video/7495374287524613406",
+            "https://www.tiktok.com/@3blue1brown/video/7490602042063392030",
+                     ]
+        max_workers = os.cpu_count()
+        print(f"Starting processing with up to {max_workers} parallel workers...")
+        output_dir = "output"
+        keep_audio = args.keep_audio
+        language = args.language
+        profile_name = args.profile_name
+        # Use the ProcessPoolExecutor to manage parallel execution
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            
+            # Submit all jobs to the executor. 
+            # executor.submit schedules the function to be executed and returns a Future object.
+            future_to_url = {
+                executor.submit(
+                    process_video_worker, 
+                    url, 
+                    args.model, 
+                    output_dir, 
+                    keep_audio, 
+                    language,
+                    # Pass a custom filename if needed
+                    filename=None if profile_name else f"video_{i}.mp3"
+                ): url 
+                for i, url in enumerate(urls_to_process)
+            }
+            
+            # Process results as they are completed
+            total_videos = len(urls_to_process)
+            for i, future in enumerate(concurrent.futures.as_completed(future_to_url), 1):
+                url = future_to_url[future]
+                print(f"\n{'#'*25} Completed Video {i}/{total_videos} ({url}) {'#'*25}")
+                
+                try:
+                    result = future.result() # Get the result from the worker
+                    
+                    if result.get('error'):
+                        print(f"An error occurred while processing {url}: {result['error']}")
+                        continue
 
-        for i, video_url in enumerate(urls_to_process, 1):
-            print(f"\n{'#'*25} Processing Video {i}/{len(urls_to_process)} {'#'*25}")
-            result = processor.process_url(
-                video_url, args.output_dir, keep_audio, language,
-                filename=args.filename if not profile_name else None
-            )
-            display_results(result)
+                    display_results(result) # Your function to show results
+                    
+                    transcription_result = result['transcription']['text'] # Assuming result['transcription'] is the Whisper dict
+                    formatted_script_block = f"[PAST_SCRIPT_{i}]:\n{transcription_result}"
+                    past_scripts_data.append(formatted_script_block)
 
-            transcription_result = result['transcription']
-            formatted_script_block = f"[PAST_SCRIPT_{i}]:\n{transcription_result}"
-            past_scripts_data.append(formatted_script_block)
+                except Exception as exc:
+                    print(f"An exception was generated for URL {url}: {exc}")
+
+        print("\nAll videos have been processed.")
 
         final_scripts_string = "\n\n".join(past_scripts_data)
         topic_string = f"[NEW_TOPIC]:\n{new_topic_idea}"
