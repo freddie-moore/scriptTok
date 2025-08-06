@@ -18,7 +18,9 @@ from typing import Optional, Tuple
 from tiktok_downloader import TikTokDownloader, TikTokTranscriberError
 from audio_transcriber import AudioTranscriber
 from tiktok_profile_scraper import TikTokProfileScraper
-from secret import APIFY_API_KEY
+from gemini_client import GeminiClient
+from secret import APIFY_API_KEY, GEMINI_API_KEY
+from temp import user_inp as msg
 
 
 class TikTokAudioProcessor:
@@ -86,18 +88,25 @@ class TikTokAudioProcessor:
                 except Exception as e:
                     self.logger.warning(f"Failed to clean up audio file: {e}")
 
-def get_user_input() -> Tuple[str, bool, Optional[str]]:
-    """Get TikTok URL from user input with validation."""
+def get_profile_name_from_user() -> str:
+    """Get TikTok username from user input with validation."""
     downloader = TikTokDownloader()
     while True:
-        url = input("Please enter a TikTok URL: ").strip()
-        if url and downloader.validate_url(url):
+        url = input("Please enter a TikTok username to base style off of: @").strip()
+        if url:
             break
-        print("Invalid or empty TikTok URL. Please try again.")
+        print("Invalid or empty TikTok username. Please try again.")
     
-    keep_audio = input("Keep downloaded audio file? (y/N): ").strip().lower() == 'y'
-    language = input("Language code (leave empty for auto-detection): ").strip()
-    return url, keep_audio, language or None
+    return url
+
+def get_topic_from_user() -> str:
+    while True:
+        topic = input("Please enter a topic idea: ").strip()
+        if topic:
+            break
+        print("No topic inputted. Please try again.")
+    
+    return topic
 
 def display_results(result: dict) -> None:
     """Display transcription results in a formatted way."""
@@ -145,22 +154,23 @@ Examples:
     
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--url", help="Single TikTok video URL to process.")
-    mode_group.add_argument("--profile-url", help="TikTok profile URL to scrape for recent videos.")
+    mode_group.add_argument("--profile-name", help="TikTok username to scrape for recent videos.")
 
+    parser.add_argument("--topic", help="The topic idea to generate a new script around.")
     parser.add_argument("--apify-token", default=APIFY_API_KEY, help="Your Apify API token (required for --profile-url).")
     parser.add_argument("--limit", type=int, default=3, help="Number of videos to process from a profile (default: 3).")
-    parser.add_argument("--model", default="small", choices=["tiny", "base", "small", "medium", "large", "large-v3"], help="Whisper model (default: small).")
+    parser.add_argument("--model", default="tiny", choices=["tiny", "base", "small", "medium", "large", "large-v3"], help="Whisper model (default: tiny).")
     parser.add_argument("--output-dir", help="Directory to save audio files (defaults to a temporary folder).")
-    parser.add_argument("--keep-audio", action="store_true", help="Keep downloaded audio file(s).")
-    parser.add_argument("--language", help="Language code for transcription (e.g., 'en', 'es').")
+    parser.add_argument("--keep-audio", default="n", action="store_true", help="Keep downloaded audio file(s).")
+    parser.add_argument("--language", default="en", help="Language code for transcription (e.g., 'en', 'es').")
     parser.add_argument("--filename", help="Custom filename for audio (only in single URL mode).")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging.")
     
     args = parser.parse_args()
 
-    if args.profile_url and not args.apify_token:
-        parser.error("--apify-token is required when using --profile-url.")
-    if args.filename and args.profile_url:
+    if args.profile_name and not args.apify_token:
+        parser.error("--apify-token is required when using --profile-name.")
+    if args.filename and args.profile_name:
         print("Warning: --filename is ignored in profile mode.", file=sys.stderr)
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -168,36 +178,50 @@ Examples:
     # Suppress loud loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+
     try:
         urls_to_process = []
     
-        if args.url:
-            urls_to_process.append(args.url)
+        profile_name = args.profile_name if args.profile_name else get_profile_name_from_user()
+        keep_audio = args.keep_audio
+        language = args.language
+
+        scraper = TikTokProfileScraper(api_key=args.apify_token)
+        urls_to_process = scraper.scrape_profile_videos(profile_name, args.limit)
+        if not urls_to_process:
+            print("Could not find any videos to process. Exiting.")
+            sys.exit(0)
+
+        if args.topic:
+            new_topic_idea = args.topic
         else:
-            if not args.profile_url:
-                profile_url, keep_audio, language = get_user_input()
-            else:
-                profile_url = args.profile_url
-                keep_audio = args.keep_audio
-                language = args.language
+            new_topic_idea = get_topic_from_user()
 
-                scraper = TikTokProfileScraper(api_key=args.apify_token)
-                urls_to_process = scraper.scrape_profile_videos(profile_url, args.limit)
-                if not urls_to_process:
-                    print("Could not find any videos to process. Exiting.")
-                    sys.exit(0)
-
-        processor = TikTokAudioProcessor(model_name=args.model)
         print(f"\nFound {len(urls_to_process)} video(s) to process.")
 
+        processor = TikTokAudioProcessor(model_name=args.model)
+        past_scripts_data = []
+
         for i, video_url in enumerate(urls_to_process, 1):
-            print("Processing video URL: ", video_url)
             print(f"\n{'#'*25} Processing Video {i}/{len(urls_to_process)} {'#'*25}")
             result = processor.process_url(
                 video_url, args.output_dir, keep_audio, language,
-                filename=args.filename if not profile_url else None
+                filename=args.filename if not profile_name else None
             )
             display_results(result)
+
+            transcription_result = result['transcription']
+            formatted_script_block = f"[PAST_SCRIPT_{i}]:\n{transcription_result}"
+            past_scripts_data.append(formatted_script_block)
+
+        final_scripts_string = "\n\n".join(past_scripts_data)
+        topic_string = f"[NEW_TOPIC]:\n{new_topic_idea}"
+
+        user_input = f"{final_scripts_string}\n\n{topic_string}"
+
+        geminiClient = GeminiClient(GEMINI_API_KEY, "system_prompt.txt")
+        resp = geminiClient.generate_text(user_input)
+        print(resp)
 
     except TikTokTranscriberError as e:
         logging.error(f"A processing error occurred: {e}")

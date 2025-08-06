@@ -21,7 +21,7 @@ from tiktok_downloader import TikTokTranscriberError
 class AudioTranscriber:
     """Class responsible for transcribing audio files using OpenAI Whisper."""
     
-    def __init__(self, model_name: str = "small", device: Optional[str] = None,
+    def __init__(self, model_name: str = "tiny", device: Optional[str] = None,
                  logger: Optional[logging.Logger] = None):
         """
         Initialize the audio transcriber.
