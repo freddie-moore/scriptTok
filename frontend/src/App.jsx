@@ -18,31 +18,21 @@ const App = () => {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Load API keys from localStorage on component mount
+  // Load API keys from component state (no localStorage)
   useEffect(() => {
-    const storedKeys = {
-      gemini: localStorage.getItem('scripttok_gemini_key') || '',
-      apify: localStorage.getItem('scripttok_apify_key') || ''
-    };
-    setApiKeys(storedKeys);
-    
-    // Show modal if keys are missing
-    if (!storedKeys.gemini || !storedKeys.apify) {
+    // Show modal if keys are missing on initial load
+    if (!apiKeys.gemini || !apiKeys.apify) {
       setShowApiModal(true);
     }
-  }, []);
+  }, [apiKeys.gemini, apiKeys.apify]);
 
-  // Save API keys to localStorage
+  // Save API keys (just close modal since we're using state)
   const saveApiKeys = () => {
-    localStorage.setItem('scripttok_gemini_key', apiKeys.gemini);
-    localStorage.setItem('scripttok_apify_key', apiKeys.apify);
     setShowApiModal(false);
   };
 
   // Clear API keys
   const clearApiKeys = () => {
-    localStorage.removeItem('scripttok_gemini_key');
-    localStorage.removeItem('scripttok_apify_key');
     setApiKeys({ gemini: '', apify: '' });
     setShowApiModal(true);
   };
@@ -120,6 +110,8 @@ const App = () => {
         body: JSON.stringify({
           profile_name: profileName,
           topic: topic,
+          gemini_api_key: apiKeys.gemini,
+          apify_api_key: apiKeys.apify
         }),
       });
 
@@ -369,7 +361,7 @@ const App = () => {
             </div>
 
             <p className="text-xs text-gray-400 mt-4">
-              Your API keys are stored locally in your browser and never sent to our servers.
+              Your API keys are stored in memory during your session and sent securely to the backend for processing.
             </p>
           </div>
         </div>

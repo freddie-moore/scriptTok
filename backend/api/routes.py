@@ -14,12 +14,14 @@ def generate_script():
     data = request.get_json()
     profile_name = data.get('profile_name')
     topic = data.get('topic')
+    gemini_api_key = data.get('gemini_api_key')
+    apify_api_key = data.get('apify_api_key')
 
     if not profile_name or not topic:
         return jsonify({'error': 'Missing profile_name or topic'}), 400
 
     # Start the background task using .delay()
-    task = generate_script_task.delay(profile_name, topic)
+    task = generate_script_task.delay(profile_name, topic, gemini_api_key, apify_api_key)
 
     # Return the task ID to the client
     return jsonify({'task_id': task.id}), 202 # 202 Accepted

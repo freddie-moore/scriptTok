@@ -8,7 +8,6 @@ from core.utils import extract_script_contents
 # Import your existing classes from the core directory
 from core.tiktok_profile_scraper import TikTokProfileScraper
 from core.gemini_client import GeminiClient
-from core.secret import APIFY_API_KEY, GEMINI_API_KEY
 from core.workers import process_video_worker
 
 class NoVideosFoundError(Exception):
@@ -32,7 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 @celery.task(bind=True)
-def generate_script_task(self, profile_name: str, topic: str) -> dict:
+def generate_script_task(self, profile_name: str, topic: str, gemini_api_key: str, apify_api_key: str) -> dict:
     """
     The background task that runs the full scraping, transcription,
     and generation process. It also updates task state throughout.
@@ -40,7 +39,7 @@ def generate_script_task(self, profile_name: str, topic: str) -> dict:
     try:
         # Step 1: Scrape TikTok profile
         self.update_state(state='SCRAPING', meta={'status': 'Scraping videos from TikTok profile...'})
-        scraper = TikTokProfileScraper(api_key=APIFY_API_KEY)
+        scraper = TikTokProfileScraper(api_key=apify_api_key)
         urls_to_process = scraper.scrape_profile_videos(profile_name, video_limit=3)
 
         if not urls_to_process:
@@ -68,7 +67,7 @@ def generate_script_task(self, profile_name: str, topic: str) -> dict:
         final_scripts_string = "\n\n".join(past_scripts_data)
         user_input = f"{final_scripts_string}\n\n[NEW_TOPIC]:\n{topic}"
 
-        gemini_client = GeminiClient(GEMINI_API_KEY, "core/system_prompt.txt")
+        gemini_client = GeminiClient(gemini_api_key, "core/system_prompt.txt")
         generated_script = extract_script_contents(gemini_client.generate_text(user_input))
 
         return {'status': 'Success', 'script': generated_script}
