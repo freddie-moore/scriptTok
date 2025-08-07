@@ -2,6 +2,8 @@
 import os
 import concurrent.futures
 from celery import Celery
+import logging
+from core.utils import extract_script_contents
 
 # Import your existing classes from the core directory
 from core.tiktok_profile_scraper import TikTokProfileScraper
@@ -9,27 +11,47 @@ from core.gemini_client import GeminiClient
 from core.secret import APIFY_API_KEY, GEMINI_API_KEY
 from core.workers import process_video_worker
 
+class NoVideosFoundError(Exception):
+    """Raised when no videos are found for a given TikTok profile."""
+    def __init__(self, profile_name: str, message: str = "No videos found for the profile."):
+        self.profile_name = profile_name
+        self.message = message
+        super().__init__(f"{message} Profile: {profile_name}")
+
+
 # Configure Celery
 # The broker is Redis, which passes messages between Flask and the Celery worker.
 # The backend is also Redis, which stores the results of your tasks.
 celery = Celery(__name__, broker='redis://localhost:6379/0', backend='redis://localhost:6379/0')
 
-@celery.task
-def generate_script_task(profile_name: str, topic: str) -> dict:
+# Configure logging for this module (Celery workers will inherit this)
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(processName)s] [%(levelname)s] %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+@celery.task(bind=True)
+def generate_script_task(self, profile_name: str, topic: str) -> dict:
     """
     The background task that runs the full scraping, transcription,
-    and generation process.
+    and generation process. It also updates task state throughout.
     """
     try:
-        # 1. Scrape URLs (Logic from your main())
+        # Step 1: Scrape TikTok profile
+        self.update_state(state='SCRAPING', meta={'status': 'Scraping videos from TikTok profile...'})
         scraper = TikTokProfileScraper(api_key=APIFY_API_KEY)
-        # For a web app, you might want a fixed limit or make it an option
         urls_to_process = scraper.scrape_profile_videos(profile_name, video_limit=3)
-        if not urls_to_process:
-            return {'status': 'Error', 'message': 'Could not find any videos for that profile.'}
 
-        # 2. Process videos in parallel (Logic from your main())
+        if not urls_to_process:
+            logger.warning(f"No videos found for profile: {profile_name}")
+            raise NoVideosFoundError(profile_name)
+
+        # Step 2: Transcribe and analyze videos
+        self.update_state(state='ANALYZING', meta={'status': 'Analyzing and transcribing videos...'})
         past_scripts_data = []
+
+        logger.info(f"Starting video processing with {os.cpu_count()} workers.")
         with concurrent.futures.ProcessPoolExecutor() as executor:
             future_to_url = {
                 executor.submit(process_video_worker, url, "tiny", "output", False, "en"): url
@@ -41,16 +63,16 @@ def generate_script_task(profile_name: str, topic: str) -> dict:
                     text = result['transcription']['text']
                     past_scripts_data.append(f"[PAST_SCRIPT]:\n{text}")
 
-        # 3. Call Gemini (Logic from your main())
+        # Step 3: Generate new script using Gemini
+        self.update_state(state='GENERATING', meta={'status': 'Generating new script...'})
         final_scripts_string = "\n\n".join(past_scripts_data)
         user_input = f"{final_scripts_string}\n\n[NEW_TOPIC]:\n{topic}"
 
         gemini_client = GeminiClient(GEMINI_API_KEY, "core/system_prompt.txt")
-        generated_script = gemini_client.generate_text(user_input)
-        
+        generated_script = extract_script_contents(gemini_client.generate_text(user_input))
+
         return {'status': 'Success', 'script': generated_script}
 
     except Exception as e:
-        # Log the full error for debugging
         print(f"Task failed: {e}")
-        return {'status': 'Error', 'message': str(e)}
+        raise

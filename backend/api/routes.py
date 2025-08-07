@@ -31,22 +31,16 @@ def task_status(task_id):
     The client polls this endpoint with the task ID.
     """
     task = generate_script_task.AsyncResult(task_id)
-
-    if task.state == 'PENDING':
-        response = {'state': task.state, 'status': 'Pending...'}
-    elif task.state != 'FAILURE':
-        response = {'state': task.state, 'status': 'Processing...'}
-        if 'result' in task.info and task.info['result'] is not None:
-             response['result'] = task.info['result']
-    else:
-        # Something went wrong in the background task
-        response = {
-            'state': task.state,
-            'status': str(task.info),  # this is the exception raised
-        }
-    
+    print(f"Task state {task.state}")
     # If the task is successful, the result from the task is in task.result
     if task.state == 'SUCCESS':
          return jsonify({'state': task.state, 'result': task.result})
+    elif task.state == 'FAILURE':
+        response = {
+            'state': task.state,
+            'status': str(task.info.get('message')) if isinstance(task.info, dict) else str(task.info),
+        }
+    else:
+        response = {'state': task.state, 'status': task.info.get('status', '') if task.info else ''}
 
     return jsonify(response)
