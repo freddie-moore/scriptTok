@@ -107,14 +107,14 @@ const App = () => {
     let retryCount = 0;
 
     const maxRetries = 3;
-
+    const url = "https://there-injured-artificial-months.trycloudflare.com";
    
 
     const poll = async () => {
 
       try {
 
-        const response = await fetch(`http://127.0.0.1:5000/api/status/${id}`);
+        const response = await fetch(`${url}/api/status/${id}`);
 
        
 
@@ -242,7 +242,7 @@ const App = () => {
 
     try {
 
-      const response = await fetch('http://127.0.0.1:5000/api/generate-script', {
+      const response = await fetch(`${url}/api/generate-script`, {
 
         method: 'POST',
 
