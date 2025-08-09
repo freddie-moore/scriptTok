@@ -16,6 +16,8 @@ const App = () => {
 
   });
 
+  const url = "https://there-injured-artificial-months.trycloudflare.com";
+
   const [showApiModal, setShowApiModal] = useState(false);
 
   const [showKeys, setShowKeys] = useState({ gemini: false, apify: false });
@@ -107,7 +109,6 @@ const App = () => {
     let retryCount = 0;
 
     const maxRetries = 3;
-    const url = "https://there-injured-artificial-months.trycloudflare.com";
    
 
     const poll = async () => {
@@ -115,7 +116,7 @@ const App = () => {
       try {
 
         const response = await fetch(`${url}/api/status/${id}`);
-
+2
        
 
         if (!response.ok) {
@@ -241,45 +242,30 @@ const App = () => {
 
 
     try {
+      const requestBody = {
+        profile_name: profileName,
+        topic: topic,
+        gemini_api_key: apiKeys.gemini,
+        apify_api_key: apiKeys.apify
+      };
+
+      console.log('Sending request to:', `${url}/api/generate-script`);
+      console.log('Request body:', requestBody);
 
       const response = await fetch(`${url}/api/generate-script`, {
-
         method: 'POST',
-
         headers: {
-
           'Content-Type': 'application/json',
-
         },
-
-        body: JSON.stringify({
-
-          profile_name: profileName,
-
-          topic: topic,
-
-          gemini_api_key: apiKeys.gemini,
-
-          apify_api_key: apiKeys.apify
-
-        }),
-
+        body: JSON.stringify(requestBody),
       });
 
-
-
       if (!response.ok) {
-
         throw new Error('Could not start the generation process');
-
       }
 
-
-
       const data = await response.json();
-
       setTaskId(data.task_id);
-
       pollStatus(data.task_id);
 
 
