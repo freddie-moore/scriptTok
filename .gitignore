@@ -2,3 +2,4 @@
 venv/
 secret.py
 audio_files/
+*.pem

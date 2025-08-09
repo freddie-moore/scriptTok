@@ -40,7 +40,7 @@ def generate_script_task(self, profile_name: str, topic: str, gemini_api_key: st
         # Step 1: Scrape TikTok profile
         self.update_state(state='SCRAPING', meta={'status': 'Scraping videos from TikTok profile...'})
         scraper = TikTokProfileScraper(api_key=apify_api_key)
-        urls_to_process = scraper.scrape_profile_videos(profile_name, video_limit=3)
+        urls_to_process = scraper.scrape_profile_videos(profile_name, video_limit=5)
 
         if not urls_to_process:
             logger.warning(f"No videos found for profile: {profile_name}")

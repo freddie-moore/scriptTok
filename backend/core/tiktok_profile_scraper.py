@@ -76,7 +76,7 @@ class TikTokProfileScraper:
             self.logger.error(f"Could not extract username from URL '{profile_url}': {e}")
             raise TikTokTranscriberError(f"Invalid TikTok profile URL format: {profile_url}")
 
-    def scrape_profile_videos(self, username: str, video_limit: int = 2) -> List[str]:
+    def scrape_profile_videos(self, username: str, video_limit: int = 5) -> List[str]:
         """
         Runs the Apify TikTok Profile Scraper Actor to get video URLs.
 
@@ -122,4 +122,4 @@ class TikTokProfileScraper:
 
         except Exception as e:
             self.logger.error(f"Apify Actor call failed: {e}")
-            raise TikTokTranscriberError(f"Failed to scrape profile '{username}'. See logs for details.")
+            raise TikTokTranscriberError(f"Failed to scrape profile '{username}': {e}")

@@ -53,6 +53,8 @@ How does the speaker verbally refer to what might be on screen? Note if they use
 Step 2: Script Generation Instructions
 After your analysis, generate the new script based on the [NEW_TOPIC].
 
+Research the topic: If you are not sure on exactly what the described topic is, you may use the search tool to investigate further.
+
 Embody the Persona: Write the script from the first-person perspective of the creator. Use their characteristic vocabulary, sentence structure, and tone.
 
 Replicate the Structure: The structure of your generated script must mirror your analysis. If the creator uses distinct hooks or outros, create them as separate sections. If their videos are one continuous narrative, you must provide the script as a single, flowing block of text inside the BODY.
